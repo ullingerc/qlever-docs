@@ -271,6 +271,8 @@ Note that during query planning a suitable view is selected independently of its
 
 **Disabling automatic usage of materialized views**: If you want to disable the automatic usage of materialized views, you can set `qlever settings enable-materialized-view-query-rewrite=false`. This is particularly relevant if you use SPARQL updates, which are not yet supported by materialized views.
 
+**Matching the entire view query**: Independently of the query patterns described above, QLever also uses a loaded view if the query used for writing the view appears unchanged as a part of the user query (for example as a subquery), up to `BIND` statements, which are handled as described above. This works for views of arbitrary shape, also for views that are not suitable for the query patterns above, for example because their query contains `OPTIONAL`, `UNION`, or `FILTER`. Note that this matching is only reliable for queries that are planned exhaustively (via dynamic programming); for large queries, for which QLever falls back to greedy query planning (see the runtime parameter `query-planning-budget`), the view may not be detected. Like the other forms of automatic usage, it is disabled by `enable-materialized-view-query-rewrite=false`.
+
 ## Sort order
 
 Materialized views are sorted by the first column, then the second column, and
