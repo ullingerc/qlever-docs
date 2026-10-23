@@ -123,7 +123,7 @@ example `qlever settings materialized-view-writer-memory=4G`.
     -H "Accept: application/json" 
     -H "Content-type: application/sparql-query" 
     --data "SELECT ... { ... }"
-    # Returns: {"materialized-view-written":"nameOfTheView"}
+    # Returns: {"materialized-view-written":"nameOfTheView","warnings":[]}
     ```
 === "libqlever"
     ```cpp
@@ -320,7 +320,7 @@ In addition to the [explicit query syntax](#querying-a-materialized-view), QLeve
         ?s <p1> _:b . _:b <p2> ?o .
         ```
 
-        The examples given here should be rewritten to ordinary triple patterns instead.
+        The examples given here should be rewritten to ordinary triple patterns instead. QLever warns when writing a view that uses blank nodes or property paths consisting only of `/` and `^`.
 
     4. Do not use predicate variables, like `<a> ?p ?o`.
     5. Select all variables appearing in your query. The first selected variable must appear in a triple (it must not be the target of a `BIND`).
