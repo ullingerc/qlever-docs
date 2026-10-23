@@ -633,7 +633,9 @@ literal, for example `"LINESTRING(1 1, 2 a, 3 3)"^^geo:wktLiteral`, has no
 geometry: a [GeoSPARQL function](#geosparql-functions) applied to it yields an unbound value, and it
 never matches in a [geometric relation](#geosparql-geometric-relations) or
 [maximum distance search](#geosparql-maximum-distance-search). If a spatial
-search skips invalid literals, the query result contains a warning.
+search skips invalid literals, the query result contains a warning. Likewise,
+an algorithm that only supports points (like `s2`) warns about the rows it
+skipped because they are not points.
 
 If you want an invalid WKT literal given inline in the query (e.g. as an
 argument of a GeoSPARQL function) to produce an error instead, set the [runtime
