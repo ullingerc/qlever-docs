@@ -90,7 +90,8 @@ You can write a materialized view using the `qlever` command-line interface
 (this is the easiest way), via an HTTP request or via `libqlever`, as shown
 below. Simply substitute the relevant placeholders as needed. If needed, the
 memory available for sorting the rows of the materialized view can be
-configured using the `materialized-view-writer-memory` runtime parameter, for
+configured using the `materialized-view-writer-memory` [runtime
+parameter](qleverfile.md#runtime-parameters), for
 example `qlever settings materialized-view-writer-memory=4G`.
 
 
@@ -337,7 +338,7 @@ Note that during query planning a suitable view is selected independently of its
 
 **Limiting the search**: Since the number of candidates in the pattern matching algorithm can grow exponentially in the size of the query, its search is bounded by the [runtime parameters](qleverfile.md#runtime-parameters) `materialized-view-pattern-match-num-assignments` and `materialized-view-pattern-match-num-replacement-plans`.
 
-**Disabling automatic usage of materialized views**: If you want to disable the automatic usage of materialized views, you can set `qlever settings enable-materialized-view-query-rewrite=false`. This is particularly relevant if you use SPARQL updates, which are not yet supported by materialized views.
+**Disabling automatic usage of materialized views**: If you want to disable the automatic usage of materialized views, you can set the [runtime parameter](qleverfile.md#runtime-parameters) `enable-materialized-view-query-rewrite=false`, for example via `qlever settings enable-materialized-view-query-rewrite=false`. This is particularly relevant if you use SPARQL updates, which are not yet supported by materialized views.
 
 **Matching the entire view query**: Independently of the query patterns described above, QLever also uses a loaded view if the query used for writing the view appears unchanged as a part of the user query (for example as a subquery), up to `BIND` statements, which are handled as described above. This works for views of arbitrary shape, also for views that are not suitable for the query patterns above, for example because their query contains `OPTIONAL`, `UNION`, or `FILTER`. Note that this matching is only reliable for queries that are planned exhaustively (via dynamic programming); for large queries, for which QLever falls back to greedy query planning (see the runtime parameter `query-planning-budget`), the view may not be detected. Like the other forms of automatic usage, it is disabled by `enable-materialized-view-query-rewrite=false`.
 
