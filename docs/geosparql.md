@@ -327,7 +327,7 @@ FILTER(geof:distance(?geom1, ?geom2, "some-supported-unit-iri"^^xsd:anyURI) <= c
 
 You may also replace one of either `?geom1` or `?geom2` with an inline literal `"..."^^geo:wktLiteral`. Instead of a `constant`, you may also use a variable that has the same numeric value in every row, because it is bound by a `BIND` of a literal (like `BIND(500 AS ?maxDist)`) or by a `VALUES` clause with a single value, in the same group graph pattern as the `FILTER` or in a group nested in it.
 
-In the *Analysis* view of the QLever UI you can see *Spatial Join* instead of *Cartesian Product Join*, when the optimization is in effect. The GeoSPARQL maximum distance search is a standard syntax method for using the [QLever Spatial Search](#custom-spatial-search). The custom feature provides more options, for example nearest neighbor search.
+In the *Analysis* view of the QLever UI you can see *Spatial Join* instead of *Cartesian Product Join*, when the optimization is in effect. If a `FILTER` uses `geof:distance` or `geof:metricDistance` but does not match one of these patterns (for example, because it uses `<` instead of `<=`), QLever adds a warning to the query result. The GeoSPARQL maximum distance search is a standard syntax method for using the [QLever Spatial Search](#custom-spatial-search). The custom feature provides more options, for example nearest neighbor search.
 
 If the query additionally computes the distance between the same two geometries, as in `BIND(geof:distance(?geom1, ?geom2, unit:M) AS ?dist)`, this distance is taken from the maximum distance search instead of being computed a second time.
 
