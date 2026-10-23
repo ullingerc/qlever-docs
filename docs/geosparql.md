@@ -382,10 +382,12 @@ These GeoSPARQL-compliant filters are a standard syntax method for using the
 
 For `FILTER geof:relate(?geom1, ?geom2, "de9im-filter")`, the third argument must be a valid DE-9IM filter as a string literal with exactly 9 characters. Each character must be one of `0`-`2`, `T`/`F` (or lowercase), or `*`, for example `"T*****FF*"` to test containment. The filter must not match disjoint geometries.
 
-*NOTE*: Currently, the functions stated above are only supported in `FILTER`s
-between two different variables or between a variable and an inline literal.
-Also there may not be multiple filters on the same pair of variables. Otherwise
-the query processing will return an error.
+*NOTE*: The functions stated above can be used anywhere in a query, for example in
+a `BIND`. However, only a `FILTER` between two different variables or between a
+variable and an inline literal is evaluated using the efficient spatial search;
+all other uses compute the relation separately for each row. Also, if there are
+multiple such filters on the same pair of variables, only one of them uses the
+spatial search.
 
 ??? note "Example query using `geof:sfIntersects`"
 
