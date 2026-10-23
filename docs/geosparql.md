@@ -2,20 +2,6 @@
 
 This page describes which features from the [OGC GeoSPARQL standard](https://docs.ogc.org/is/22-047r1/22-047r1.html) are supported in QLever, and how to use them. It also describes some custom extensions, like nearest neighbor search.
 
-!!! note "TL;DR: Recommended Qleverfile settings"
-    For the best GeoSPARQL performance, assuming your dataset contains geometries as `?subject geo:hasGeometry/geo:asWKT ?wkt`, add this to your `Qleverfile` before running `qlever index` and `qlever start`.
-
-    ```ini
-    [index]
-    # ...
-    VOCABULARY_TYPE = on-disk-compressed-geo-split
-    MATERIALIZED_VIEWS = {"geometries": "PREFIX geo: <http://www.opengis.net/ont/geosparql#> PREFIX geof: <http://www.opengis.net/def/function/geosparql/> SELECT ?subject ?intermediate ?geometry ?centroid ?area ?length ?lower_left ?upper_right WHERE { ?subject geo:hasGeometry ?intermediate . ?intermediate geo:asWKT ?geometry . BIND(geof:centroid(?geometry) AS ?centroid) BIND(geof:metricArea(?geometry) AS ?area) BIND(geof:metricLength(?geometry) AS ?length) BIND(ql:envelopeLowerLeft(?geometry) AS ?lower_left) BIND(ql:envelopeUpperRight(?geometry) AS ?upper_right) }"}
-
-    [server]
-    # ...
-    PRELOAD_MATERIALIZED_VIEWS = geometries
-    ```
-
 ## Geometry Preprocessing
 
 QLever can preprocess geometries to accelerate various queries. This can be requested via the option `VOCABULARY_TYPE = on-disk-compressed-geo-split` in the `[index]` section of your `Qleverfile` for use with `qlever index` or the `--vocabulary-type on-disk-compressed-geo-split` argument of the `qlever-index` binary. Together with an appropriate [materialized view](#geo-matview) preprocessing may provide a drastic performance improvement.
@@ -476,14 +462,13 @@ The following configuration parameters are provided in the `SERVICE` as triples 
 
 | Parameter | Domain | Description |
 |--|--|--|
-| `algorithm` | `<baseline>`, `<s2>`, `<boundingBox>`, `<libspatialjoin>` | The algorithm to use. The `boundingBox` algorithm is deprecated and will be removed in a future version of QLever; please use `libspatialjoin` or `s2` instead. |
+| `algorithm` | `<baseline>`, `<s2>`, `<boundingBox>`, `<libspatialjoin>` | The algorithm to use. |
 | `left` | variable | The left join table: *"for every [left] geometry ..."*. Must refer to a column with literals of `geo:wktLiteral` datatype. |
 | `right` | variable | The right join table: *"... find the closest/all intersecting/... [right] geometries"*.  Must refer to a column with literals of `geo:wktLiteral` datatype. |
 | `numNearestNeighbors` | integer | The maximum number of nearest neighbor points from `right` for every point from `left`. Only supported by the `baseline` and `s2` algorithms. |
 | `maxDistance` | integer | The maximum distance in meters between points from `left` and `right` to be included in the result. |
 | `de9imFilter` | string | A valid DE-9IM filter as a literal with exactly 9 characters, each of which must be one of `0`-`2`, `T`/`F` (or lowercase), or `*`. For example `"T*****FF*"` to test containment. The filter must not match disjoint geometries. Requires `algorithm` to be `libspatialjoin` and `joinType` to be `de9im`. |
-| `bindDistance` | variable | An otherwise unbound variable name which will be used to give the distance between the result pairs, in the unit given by `distanceUnit`. |
-| `distanceUnit` | IRI of a unit of length | The unit of the distances bound to the `bindDistance` variable, for example `<http://qudt.org/vocab/unit/M>` (meters) or `<http://qudt.org/vocab/unit/KiloM>` (kilometers); the same units as for [`geof:distance`](#geof-distance) are supported. Requires `bindDistance`. If not given, the distance is given in meters for the `libspatialjoin` algorithm and in kilometers for all other algorithms. We recommend always setting it explicitly. |
+| `bindDistance` | variable | An otherwise unbound variable name which will be used to give the distance in kilometers between the result point pairs. |
 | `payload` | variable or IRI `<all>` | Variable from the group graph pattern inside the `SERVICE` to be included in the result. `right` is automatically included. This parameter may be repeated to include multiple variables. For all variables use `<all>`. If `right` is given outside of the `SERVICE` do not use this parameter. |
 | `joinType` | `<intersects>`, `<covers>`, `<contains>`, `<touches>`, `<crosses>`, `<overlaps>`, `<equals>`, `<within>`, `<within-dist>`, `<de9im>` | The geometric relation to compute between the `left` and `right` geometries. Iff `within-dist` is chosen, the `maxDistance` parameter is required. Iff `de9im` is chosen, the `de9imFilter` parameter is required. Mandatory when using the `libspatialjoin` algorithm and illegal for all other algorithms.  |
 
@@ -584,11 +569,21 @@ meters can be given that restricts the search radius. Example query:
 
 ## Runtime parameters
 
-The spatial search can be configured with the [runtime
-parameters](qleverfile.md#runtime-parameters) `spatial-join-max-num-threads`
-(the number of threads), `spatial-join-prefilter-max-size` (when to use
-prefiltering with [geometry preprocessing](#geometry-preprocessing)), and
-`spatial-join-tmp-dir` (the directory for temporary files).
+`spatial-join-max-num-threads`: the number of threads for a spatial search
+operation (also GeoSPARQL `FILTER` on maximum distance or geometric relations)
+can be limited. Setting the option to `0` amounts to taking the number of CPU
+threads. The default value is `8`, since further threads seem to provide little
+additional performance gain.
+
+`spatial-join-prefilter-max-size`: If the special `VOCABULARY_TYPE` for
+geometries is used (see [Geometry Preprocessing](#geometry-preprocessing)), the
+inputs from the larger side of a spatial search are automatically prefiltered
+based on the aggregated bounding box of the inputs from the smaller side. If
+the aggregated bounding box is very large, the cost for prefiltering can
+outweigh the savings. Thus prefiltering is disabled at a certain bounding box
+size. This can be configured using `spatial-join-prefilter-max-size`. By
+default the limit is `2500` square coordinates. To deactivate prefiltering
+completely, set this to `0`.
 
 ## Internal Geometry Functions
 
@@ -633,12 +628,13 @@ prefiltering with [geometry preprocessing](#geometry-preprocessing)), and
 
 WKT literals are parsed strictly, as required by GeoSPARQL 1.1. A malformed
 literal, for example `"LINESTRING(1 1, 2 a, 3 3)"^^geo:wktLiteral`, has no
-geometry: a GeoSPARQL function applied to it yields an unbound value, and it
+geometry: a [GeoSPARQL function](#geosparql-functions) applied to it yields an unbound value, and it
 never matches in a [geometric relation](#geosparql-geometric-relations) or
 [maximum distance search](#geosparql-maximum-distance-search). The number of
 invalid literals skipped by a spatial search is shown as `num-geoms-invalid`
-in its runtime information, and the query result contains a warning. If you
-want an invalid WKT literal given directly
+in its runtime information, and the query result contains a warning.
+
+If you want an invalid WKT literal given directly
 in the query (or via `VALUES`) as an argument of a GeoSPARQL function to
 produce an error instead, set the [runtime
 parameter](qleverfile.md#runtime-parameters) `throw-on-invalid-wkt`,
