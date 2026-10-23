@@ -329,6 +329,8 @@ You may also replace one of either `?geom1` or `?geom2` with an inline literal `
 
 In the *Analysis* view of the QLever UI you can see *Spatial Join* instead of *Cartesian Product Join*, when the optimization is in effect. The GeoSPARQL maximum distance search is a standard syntax method for using the [QLever Spatial Search](#custom-spatial-search). The custom feature provides more options, for example nearest neighbor search.
 
+If the query additionally computes the distance between the same two geometries, as in `BIND(geof:distance(?geom1, ?geom2, unit:M) AS ?dist)`, this distance is taken from the maximum distance search instead of being computed a second time.
+
 !!! warning "Performance recommendations"
     For the best performance, we strongly recommend using [geometry preprocessing](#geometry-preprocessing) and a [materialized view with the geometries' bounding boxes](#geo-matview).
 
