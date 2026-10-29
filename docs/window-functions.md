@@ -196,10 +196,10 @@ partition variables.
 ## Example on Wikidata
 
 The following query computes, for each sovereign state, the three citizens with
-the most sitelinks (articles in the different Wikipedias etc.). It sorts the
-5.3 million citizens once and takes about 1.5 seconds, while the equivalent
-query in standard SPARQL compares all 1.2 trillion pairs of citizens of the
-same country and runs out of memory.
+the most sitelinks (articles in the different Wikipedias etc.). Its cost is
+essentially sorting the 5.3 million citizens once. In standard SPARQL, the same
+result requires comparing each citizen with all citizens of the same country,
+which are about 1.2 trillion pairs.
 
 ```sparql
 PREFIX wd: <http://www.wikidata.org/entity/>
@@ -239,7 +239,8 @@ ORDER BY ?countryLabel DESC(?sitelinks)
 ??? note "The same query in standard SPARQL"
 
     For each person, count the people of the same country with at least as many
-    sitelinks. This joins all pairs of citizens of the same country.
+    sitelinks. The size of this join grows quadratically with the number of
+    citizens per country.
 
     ```sparql
     PREFIX wd: <http://www.wikidata.org/entity/>
