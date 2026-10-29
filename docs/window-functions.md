@@ -1,21 +1,23 @@
 # Window Functions
 
 !!! info "History"
-    - Added by [qlever#TODO](https://github.com/ad-freiburg/qlever/pull/TODO)
+    - Added by [qlever#3848](https://github.com/ad-freiburg/qlever/pull/3848)
 
 In SQL, **window functions** compute a value for each row from other rows of
 the same *window*, that is, the rows with the same values in the `PARTITION
 BY` columns, in the order given by the `ORDER BY` clause. For example,
-`LAG(population) OVER (PARTITION BY city ORDER BY year)` returns, for each row,
-the population of the previous row of the same city. Unlike `GROUP BY`, a
-window function keeps all rows. SPARQL has no window functions.
+`LEAD(?d) OVER (PARTITION BY ?e ORDER BY ?d)` returns, for each row, the value
+of `?d` in the next row with the same `?e`. Unlike `GROUP BY`, a window
+function keeps all rows. SPARQL has no window functions.
 
 QLever provides a `SERVICE` that adds a column with **row numbers** to the
 result of a sorted subquery. Joining such results with each other on the row
 number (and the partition variables) yields the equivalent of `LAG`, `LEAD`,
 `FIRST_VALUE`, `LAST_VALUE`, `ROW_NUMBER`, and top-k per group, as shown in the
 [examples](#sql-window-functions-by-example) below. Because the result is
-sorted by the row number, these joins are particularly efficient.
+sorted by the row number, these joins are particularly efficient. See the
+[Wikidata example](#example-the-most-famous-people-of-each-country) for
+a query that is practically impossible to evaluate without this feature.
 
 A simple SPARQL function to be used with `BIND` would be unsuitable for this,
 because the value of a `BIND` expression may only depend on the bindings of its
@@ -30,14 +32,11 @@ the following form:
 
 ```sparql
 PREFIX rn: <https://qlever.cs.uni-freiburg.de/rowNumber/>
-SELECT * WHERE {
+SELECT ?n ?e ?d WHERE {
   SERVICE rn: {
     [] rn:bind ?n ;
-       rn:offset 1 .
-    {
-      SELECT ?x ?y WHERE { ... }
-      ORDER BY ?x ?y
-    }
+       rn:offset 0 .
+    { SELECT ?e ?d WHERE { ?e <value> ?d } ORDER BY ?e ?d }
   }
 }
 ```
@@ -63,52 +62,31 @@ the `ORDER BY` clause must be bound by the subquery, otherwise the query is
 rejected with an error (an unbound variable has no effect on the order, so the
 row numbers would silently not follow the requested order).
 
-## Example data
-
-The examples on this page use the following data, which contains the
-(fictional) population of three cities in different years:
-
-```turtle
-@prefix ex: <http://example.org/> .
-ex:m1 ex:city ex:Freiburg ; ex:year 2000 ; ex:population 205000 .
-ex:m2 ex:city ex:Freiburg ; ex:year 2010 ; ex:population 224000 .
-ex:m3 ex:city ex:Freiburg ; ex:year 2020 ; ex:population 231000 .
-ex:m4 ex:city ex:Basel ; ex:year 2000 ; ex:population 166000 .
-ex:m5 ex:city ex:Basel ; ex:year 2020 ; ex:population 173000 .
-ex:m6 ex:city ex:Graz ; ex:year 2010 ; ex:population 262000 .
-```
-
-The following query numbers all measurements, sorted by city and year:
-
-```sparql
-PREFIX ex: <http://example.org/>
-PREFIX rn: <https://qlever.cs.uni-freiburg.de/rowNumber/>
-SELECT ?n ?city ?year ?population WHERE {
-  SERVICE rn: {
-    [] rn:bind ?n .
-    {
-      SELECT ?city ?year ?population WHERE {
-        ?m ex:city ?city ; ex:year ?year ; ex:population ?population .
-      }
-      ORDER BY ?city ?year
-    }
-  }
-}
-```
-
-| `?n` | `?city` | `?year` | `?population` |
-|--|--|--|--|
-| 0 | `ex:Basel` | 2000 | 166000 |
-| 1 | `ex:Basel` | 2020 | 173000 |
-| 2 | `ex:Freiburg` | 2000 | 205000 |
-| 3 | `ex:Freiburg` | 2010 | 224000 |
-| 4 | `ex:Freiburg` | 2020 | 231000 |
-| 5 | `ex:Graz` | 2010 | 262000 |
-
 ## SQL window functions by example
 
+The examples in this section use the following data, where `?e` is an entity
+and `?d` is one of its values:
+
+```turtle
+<a> <value> 1, 2, 4 .
+<b> <value> 3, 5 .
+<c> <value> 6 .
+```
+
+The query from the [previous section](#row-numbers) numbers the rows as
+follows:
+
+| `?n` | `?e` | `?d` |
+|--|--|--|
+| 0 | `<a>` | 1 |
+| 1 | `<a>` | 2 |
+| 2 | `<a>` | 4 |
+| 3 | `<b>` | 3 |
+| 4 | `<b>` | 5 |
+| 5 | `<c>` | 6 |
+
 The row numbers are not restarted for each partition. Instead, the partition
-variables (here `?city`) are the first variables of the `ORDER BY` clause, such
+variables (here `?e`) are the first variables of the `ORDER BY` clause, such
 that the rows of each partition are consecutive. The window functions are then
 expressed by joining two row number services with **different offsets** on the
 row number variable **and** the partition variables. The following table gives
@@ -116,110 +94,93 @@ an overview; the details are explained in the subsequent sections.
 
 | SQL | QLever |
 |--|--|
-| `LAG(?x, k) OVER (PARTITION BY ?p ORDER BY ?o)` | `OPTIONAL` join with a second service with `offset` k |
-| `LEAD(?x, k) OVER (PARTITION BY ?p ORDER BY ?o)` | `offset` k on the outer service, `OPTIONAL` join with a second service |
-| `LAST_VALUE`, argmax per group | `MINUS` of the rows that have a successor (`LEAD`) |
-| `FIRST_VALUE`, argmin per group | `MINUS` of the rows that have a predecessor (`LAG`) |
-| `ROW_NUMBER() OVER (PARTITION BY ?p ORDER BY ?o)`, top-k per group | Subtract the smallest row number of the partition |
+| `LAG(?d, k) OVER (PARTITION BY ?e ORDER BY ?d)` | `OPTIONAL` join with a second service with `offset` k |
+| `LEAD(?d, k) OVER (PARTITION BY ?e ORDER BY ?d)` | `offset` k on the outer service, `OPTIONAL` join with a second service |
+| `LAST_VALUE`, argmax per group | `MINUS` of the rows that have a successor |
+| `FIRST_VALUE`, argmin per group | `MINUS` of the rows that have a predecessor |
+| Top-k per group | `MINUS` of the rows that have a predecessor k rows before them |
+| `ROW_NUMBER() OVER (PARTITION BY ?e ORDER BY ?d)` | Subtract the smallest row number of the partition |
 
 ### `LAG`: the previous row
 
-The following query computes, for each measurement, the population of the
-previous measurement of the same city and the growth since then. This is the
-equivalent of `LAG(population) OVER (PARTITION BY city ORDER BY year)` in SQL.
+The following query computes, for each row, the value of the previous row of
+the same entity. This is the equivalent of `LAG(?d) OVER (PARTITION BY ?e
+ORDER BY ?d)` in SQL.
 
 ```sparql
-PREFIX ex: <http://example.org/>
 PREFIX rn: <https://qlever.cs.uni-freiburg.de/rowNumber/>
-SELECT ?city ?year ?population ?previous ?growth WHERE {
+SELECT ?e ?d ?previous WHERE {
+  # All rows, numbered from 0.
   SERVICE rn: {
     [] rn:bind ?n .
-    {
-      SELECT ?city ?year ?population WHERE {
-        ?m ex:city ?city ; ex:year ?year ; ex:population ?population .
-      }
-      ORDER BY ?city ?year
-    }
+    { SELECT ?e ?d WHERE { ?e <value> ?d } ORDER BY ?e ?d }
   }
+  # All rows, numbered from 1, such that row `i` gets the number of row `i + 1`
+  # above. Since `?e` is also a join variable, only rows of the same entity
+  # are joined.
   OPTIONAL {
     SERVICE rn: {
-      [] rn:bind ?n ; rn:offset 1 .
-      {
-        SELECT ?city ?previousYear ?previous WHERE {
-          ?m ex:city ?city ; ex:year ?previousYear ; ex:population ?previous .
-        }
-        ORDER BY ?city ?previousYear
-      }
+      [] rn:bind ?n ;
+         rn:offset 1 .
+      { SELECT ?e ?previous WHERE { ?e <value> ?previous } ORDER BY ?e ?previous }
     }
   }
-  BIND(?population - ?previous AS ?growth)
 }
 ```
 
-| `?city` | `?year` | `?population` | `?previous` | `?growth` |
-|--|--|--|--|--|
-| `ex:Basel` | 2000 | 166000 | | |
-| `ex:Basel` | 2020 | 173000 | 166000 | 7000 |
-| `ex:Freiburg` | 2000 | 205000 | | |
-| `ex:Freiburg` | 2010 | 224000 | 205000 | 19000 |
-| `ex:Freiburg` | 2020 | 231000 | 224000 | 7000 |
-| `ex:Graz` | 2010 | 262000 | | |
+| `?e` | `?d` | `?previous` |
+|--|--|--|
+| `<a>` | 1 | |
+| `<a>` | 2 | 1 |
+| `<a>` | 4 | 2 |
+| `<b>` | 3 | |
+| `<b>` | 5 | 3 |
+| `<c>` | 6 | |
 
-The second service numbers the rows starting at 1, so its row `i` has the same
-row number as row `i + 1` of the first service. Joining on `?n` and `?city`
-thus attaches to each row its predecessor, if the predecessor belongs to the
-same city. The `OPTIONAL` keeps the first row of each city, which has no
-predecessor. To get the row `k` rows before the current row, that is,
-`LAG(population, k)`, use `rn:offset k` in the second service. A default value
-like in `LAG(population, 1, 0)` can be added with `COALESCE(?previous, 0)`.
+The `OPTIONAL` keeps the first row of each entity, which has no predecessor. To
+get the row `k` rows before the current row, that is, `LAG(?d, k)`, use
+`rn:offset k` in the second service. A default value like in `LAG(?d, 1, 0)`
+can be added with `COALESCE(?previous, 0)`.
 
 The second subquery selects the same variables as the first one, but under
-different names, such that only `?n` and `?city` are shared between the two
+different names, such that only `?n` and `?e` are shared between the two
 services. See the [performance hints](#performance) for why the subqueries
 should otherwise be identical.
 
 ### `LEAD`: the next row
 
 For the next row instead of the previous one, the offset is moved to the
-**outer** service. The following query computes, for each measurement, the year
-of the next measurement of the same city. This is the equivalent of
-`LEAD(year) OVER (PARTITION BY city ORDER BY year)` in SQL.
+**outer** service. This is the equivalent of `LEAD(?d) OVER (PARTITION BY ?e
+ORDER BY ?d)` in SQL.
 
 ```sparql
-PREFIX ex: <http://example.org/>
 PREFIX rn: <https://qlever.cs.uni-freiburg.de/rowNumber/>
-SELECT ?city ?year ?nextYear WHERE {
+SELECT ?e ?d ?next WHERE {
+  # All rows, numbered from 1.
   SERVICE rn: {
-    [] rn:bind ?n ; rn:offset 1 .
-    {
-      SELECT ?city ?year WHERE {
-        ?m ex:city ?city ; ex:year ?year .
-      }
-      ORDER BY ?city ?year
-    }
+    [] rn:bind ?n ;
+       rn:offset 1 .
+    { SELECT ?e ?d WHERE { ?e <value> ?d } ORDER BY ?e ?d }
   }
+  # All rows, numbered from 0, such that row `i + 1` gets the number of row
+  # `i` above.
   OPTIONAL {
     SERVICE rn: {
       [] rn:bind ?n .
-      {
-        SELECT ?city ?nextYear WHERE {
-          ?m ex:city ?city ; ex:year ?nextYear .
-        }
-        ORDER BY ?city ?nextYear
-      }
+      { SELECT ?e ?next WHERE { ?e <value> ?next } ORDER BY ?e ?next }
     }
   }
 }
 ```
 
-| `?city` | `?year` | `?nextYear` |
+| `?e` | `?d` | `?next` |
 |--|--|--|
-| `ex:Basel` | 2000 | 2020 |
-| `ex:Basel` | 2020 | |
-| `ex:Freiburg` | 2000 | 2010 |
-| `ex:Freiburg` | 2010 | 2020 |
-| `ex:Freiburg` | 2020 | |
-| `ex:Graz` | 2010 | |
+| `<a>` | 1 | 2 |
+| `<a>` | 2 | 4 |
+| `<a>` | 4 | |
+| `<b>` | 3 | 5 |
+| `<b>` | 5 | |
+| `<c>` | 6 | |
 
 As a rule of thumb, the offset is the distance between the two rows and it is
 put on the service whose row comes **first** in the order. Since the offset
@@ -228,82 +189,63 @@ cannot be negative, `LEAD` and `LAG` differ in which service gets the offset.
 ### `LAST_VALUE` and argmax: the last row of each partition
 
 The last row of each partition is the row without a successor in the same
-partition. The following query computes the most recent measurement of each
-city, that is, the argmax of the year per city. Unlike the common approach
-with `GROUP BY ?city` and `MAX(?year)`, this yields all variables of the row
-without joining the pattern a second time, and exactly one row per city, even
-if there are ties.
+partition. Unlike the common approach with `GROUP BY ?e` and `MAX(?d)`, this
+yields all variables of the row (the subqueries may select further variables)
+without evaluating the graph pattern a second time, and exactly one row per
+entity, even if there are ties.
 
 ```sparql
-PREFIX ex: <http://example.org/>
 PREFIX rn: <https://qlever.cs.uni-freiburg.de/rowNumber/>
-SELECT ?city ?year ?population WHERE {
+SELECT ?e ?d WHERE {
+  # All rows, numbered from 1.
   SERVICE rn: {
-    [] rn:bind ?n ; rn:offset 1 .
-    {
-      SELECT ?city ?year ?population WHERE {
-        ?m ex:city ?city ; ex:year ?year ; ex:population ?population .
-      }
-      ORDER BY ?city ?year
-    }
+    [] rn:bind ?n ;
+       rn:offset 1 .
+    { SELECT ?e ?d WHERE { ?e <value> ?d } ORDER BY ?e ?d }
   }
+  # Remove the rows that have a successor with the same entity.
   MINUS {
     SERVICE rn: {
       [] rn:bind ?n .
-      {
-        SELECT ?city ?nextYear ?nextPopulation WHERE {
-          ?m ex:city ?city ; ex:year ?nextYear ; ex:population ?nextPopulation .
-        }
-        ORDER BY ?city ?nextYear
-      }
+      { SELECT ?e ?next WHERE { ?e <value> ?next } ORDER BY ?e ?next }
     }
   }
 }
 ```
 
-| `?city` | `?year` | `?population` |
-|--|--|--|
-| `ex:Basel` | 2020 | 173000 |
-| `ex:Freiburg` | 2020 | 231000 |
-| `ex:Graz` | 2010 | 262000 |
+| `?e` | `?d` |
+|--|--|
+| `<a>` | 4 |
+| `<b>` | 5 |
+| `<c>` | 6 |
 
 For the argmin, that is, the first row of each partition, put the offset on the
-service inside the `MINUS` instead, or sort in descending order, for example
-with `ORDER BY ?city DESC(?year)`.
+service inside the `MINUS` instead, or sort in descending order with `ORDER BY
+?e DESC(?d)`.
 
 ### `FIRST_VALUE`: the first row of each partition for every row
 
 To attach a value of the first (or last) row of each partition to every row,
-like `FIRST_VALUE(population) OVER (PARTITION BY city ORDER BY year)` in SQL,
-join the result of the previous section with all rows. The following query
-computes, for each measurement, the population of the first measurement of the
-same city.
+like `FIRST_VALUE(?d) OVER (PARTITION BY ?e ORDER BY ?d)` in SQL, join the
+first rows with all rows.
 
 ```sparql
-PREFIX ex: <http://example.org/>
 PREFIX rn: <https://qlever.cs.uni-freiburg.de/rowNumber/>
-SELECT ?city ?year ?population ?firstPopulation WHERE {
-  ?m ex:city ?city ; ex:year ?year ; ex:population ?population .
+SELECT ?e ?d ?first WHERE {
+  ?e <value> ?d .
+  # The first row of each entity, that is, the rows without a predecessor with
+  # the same entity.
   {
-    SELECT ?city ?firstPopulation WHERE {
+    SELECT ?e ?first WHERE {
       SERVICE rn: {
         [] rn:bind ?n .
-        {
-          SELECT ?city ?year ?firstPopulation WHERE {
-            ?m ex:city ?city ; ex:year ?year ; ex:population ?firstPopulation .
-          }
-          ORDER BY ?city ?year
-        }
+        { SELECT ?e ?first WHERE { ?e <value> ?first } ORDER BY ?e ?first }
       }
       MINUS {
         SERVICE rn: {
-          [] rn:bind ?n ; rn:offset 1 .
-          {
-            SELECT ?city ?prevYear ?prevPopulation WHERE {
-              ?m ex:city ?city ; ex:year ?prevYear ; ex:population ?prevPopulation .
-            }
-            ORDER BY ?city ?prevYear
-          }
+          [] rn:bind ?n ;
+             rn:offset 1 .
+          { SELECT ?e ?previous WHERE { ?e <value> ?previous } ORDER BY ?e ?previous }
         }
       }
     }
@@ -311,63 +253,191 @@ SELECT ?city ?year ?population ?firstPopulation WHERE {
 }
 ```
 
-| `?city` | `?year` | `?population` | `?firstPopulation` |
-|--|--|--|--|
-| `ex:Freiburg` | 2000 | 205000 | 205000 |
-| `ex:Freiburg` | 2010 | 224000 | 205000 |
-| `ex:Freiburg` | 2020 | 231000 | 205000 |
-| `ex:Basel` | 2000 | 166000 | 166000 |
-| `ex:Basel` | 2020 | 173000 | 166000 |
-| `ex:Graz` | 2010 | 262000 | 262000 |
+| `?e` | `?d` | `?first` |
+|--|--|--|
+| `<a>` | 1 | 1 |
+| `<a>` | 2 | 1 |
+| `<a>` | 4 | 1 |
+| `<b>` | 3 | 3 |
+| `<b>` | 5 | 3 |
+| `<c>` | 6 | 6 |
 
-### `ROW_NUMBER` per partition and top-k per group
+### Top-k per group
+
+A row is among the first `k` rows of its partition if and only if the row `k`
+rows before it belongs to a different partition (or does not exist). The
+following query computes the two largest values of each entity.
+
+```sparql
+PREFIX rn: <https://qlever.cs.uni-freiburg.de/rowNumber/>
+SELECT ?e ?d WHERE {
+  # All rows, sorted by descending value per entity, numbered from 0.
+  SERVICE rn: {
+    [] rn:bind ?n .
+    { SELECT ?e ?d WHERE { ?e <value> ?d } ORDER BY ?e DESC(?d) }
+  }
+  # Remove the rows that have a row of the same entity two rows before them.
+  MINUS {
+    SERVICE rn: {
+      [] rn:bind ?n ;
+         rn:offset 2 .
+      { SELECT ?e ?other WHERE { ?e <value> ?other } ORDER BY ?e DESC(?other) }
+    }
+  }
+}
+```
+
+| `?e` | `?d` |
+|--|--|
+| `<a>` | 4 |
+| `<a>` | 2 |
+| `<b>` | 5 |
+| `<b>` | 3 |
+| `<c>` | 6 |
+
+### `ROW_NUMBER` per partition
 
 The row numbers of the service are global, but the rows of each partition are
 consecutive. The row number within the partition is therefore the global row
-number minus the smallest row number of the partition. The following query
-computes the two measurements with the largest population for each city. This
-is the equivalent of filtering by `ROW_NUMBER() OVER (PARTITION BY city ORDER
-BY population DESC) <= 2` in SQL.
+number minus the smallest row number of the partition. This is the equivalent
+of `ROW_NUMBER() OVER (PARTITION BY ?e ORDER BY ?d)` in SQL.
 
 ```sparql
-PREFIX ex: <http://example.org/>
 PREFIX rn: <https://qlever.cs.uni-freiburg.de/rowNumber/>
-SELECT ?city ?year ?population ?rank WHERE {
+SELECT ?e ?d ?rank WHERE {
+  # All rows, numbered from 0.
   SERVICE rn: {
     [] rn:bind ?n .
-    {
-      SELECT ?city ?year ?population WHERE {
-        ?m ex:city ?city ; ex:year ?year ; ex:population ?population .
-      }
-      ORDER BY ?city DESC(?population)
-    }
+    { SELECT ?e ?d WHERE { ?e <value> ?d } ORDER BY ?e ?d }
   }
+  # The smallest row number of each entity.
   {
-    SELECT ?city (MIN(?n) AS ?first) WHERE {
+    SELECT ?e (MIN(?n) AS ?first) WHERE {
       SERVICE rn: {
         [] rn:bind ?n .
-        {
-          SELECT ?city ?year ?population WHERE {
-            ?m ex:city ?city ; ex:year ?year ; ex:population ?population .
-          }
-          ORDER BY ?city DESC(?population)
-        }
+        { SELECT ?e ?d WHERE { ?e <value> ?d } ORDER BY ?e ?d }
       }
     }
-    GROUP BY ?city
+    GROUP BY ?e
   }
   BIND(?n - ?first + 1 AS ?rank)
-  FILTER(?rank <= 2)
 }
 ```
 
-| `?city` | `?year` | `?population` | `?rank` |
-|--|--|--|--|
-| `ex:Basel` | 2020 | 173000 | 1 |
-| `ex:Basel` | 2000 | 166000 | 2 |
-| `ex:Freiburg` | 2020 | 231000 | 1 |
-| `ex:Freiburg` | 2010 | 224000 | 2 |
-| `ex:Graz` | 2010 | 262000 | 1 |
+| `?e` | `?d` | `?rank` |
+|--|--|--|
+| `<a>` | 1 | 1 |
+| `<a>` | 2 | 2 |
+| `<a>` | 4 | 3 |
+| `<b>` | 3 | 1 |
+| `<b>` | 5 | 2 |
+| `<c>` | 6 | 1 |
+
+## Example: the most famous people of each country
+
+The following query computes, for each sovereign state, the three citizens
+with the most *sitelinks* on Wikidata, that is, the number of articles about
+the person in the different language editions of Wikipedia and other Wikimedia
+projects. In SQL, this would be a filter on `ROW_NUMBER() OVER (PARTITION BY
+country ORDER BY sitelinks DESC) <= 3`. The query uses the [top-k
+pattern](#top-k-per-group) from above.
+
+```sparql
+PREFIX wd: <http://www.wikidata.org/entity/>
+PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+PREFIX wikibase: <http://wikiba.se/ontology#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX rn: <https://qlever.cs.uni-freiburg.de/rowNumber/>
+SELECT ?country ?countryLabel ?person ?personLabel ?sitelinks WHERE {
+  # All citizens of all sovereign states, sorted by country and by descending
+  # number of sitelinks, numbered from 0.
+  SERVICE rn: {
+    [] rn:bind ?n .
+    {
+      SELECT ?country ?person ?sitelinks WHERE {
+        ?country wdt:P31 wd:Q3624078 .
+        ?person wdt:P27 ?country ; wdt:P31 wd:Q5 ; wikibase:sitelinks ?sitelinks .
+      }
+      ORDER BY ?country DESC(?sitelinks) ?person
+    }
+  }
+  # Remove the people that have a person of the same country three rows before
+  # them. The subquery is the same as above with renamed variables.
+  MINUS {
+    SERVICE rn: {
+      [] rn:bind ?n ;
+         rn:offset 3 .
+      {
+        SELECT ?country ?other ?otherSitelinks WHERE {
+          ?country wdt:P31 wd:Q3624078 .
+          ?other wdt:P27 ?country ; wdt:P31 wd:Q5 ; wikibase:sitelinks ?otherSitelinks .
+        }
+        ORDER BY ?country DESC(?otherSitelinks) ?other
+      }
+    }
+  }
+  OPTIONAL { ?country rdfs:label ?countryLabel . FILTER(LANG(?countryLabel) = "en") }
+  OPTIONAL { ?person rdfs:label ?personLabel . FILTER(LANG(?personLabel) = "en") }
+}
+ORDER BY ?countryLabel DESC(?sitelinks)
+```
+
+An excerpt of the result:
+
+| `?countryLabel` | `?personLabel` | `?sitelinks` |
+|--|--|--|
+| Germany | Albert Einstein | 322 |
+| Germany | Angela Merkel | 220 |
+| Germany | Benedict XVI | 200 |
+| India | Mahatma Gandhi | 287 |
+| India | Mother Teresa | 200 |
+| India | Jawaharlal Nehru | 193 |
+| Japan | Matsuo Bashō | 202 |
+| Japan | Naruhito | 189 |
+| Japan | Katsushika Hokusai | 177 |
+
+Wikidata contains about 5.3 million citizens of 200 sovereign states, with up
+to about 690 thousand citizens per state. The query above sorts these rows once
+(the second service takes the sorted result from the cache) and then computes
+the `MINUS` in a single pass over both sorted results, without sorting again.
+On an index with the relevant part of Wikidata, it takes about 1.5 seconds.
+
+??? note "The same query in standard SPARQL"
+
+    Without row numbers, the usual way to compute the top-k per group is to
+    count, for each person, the people of the same country with at least as many
+    sitelinks:
+
+    ```sparql
+    PREFIX wd: <http://www.wikidata.org/entity/>
+    PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+    PREFIX wikibase: <http://wikiba.se/ontology#>
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    SELECT ?country ?countryLabel ?person ?personLabel ?sitelinks WHERE {
+      {
+        # For each person, count the people of the same country with at least as
+        # many sitelinks (including the person itself).
+        SELECT ?country ?person ?sitelinks WHERE {
+          ?country wdt:P31 wd:Q3624078 .
+          ?person wdt:P27 ?country ; wdt:P31 wd:Q5 ; wikibase:sitelinks ?sitelinks .
+          ?other wdt:P27 ?country ; wdt:P31 wd:Q5 ; wikibase:sitelinks ?otherSitelinks .
+          FILTER(?otherSitelinks >= ?sitelinks)
+        }
+        GROUP BY ?country ?person ?sitelinks
+        HAVING (COUNT(*) <= 3)
+      }
+      OPTIONAL { ?country rdfs:label ?countryLabel . FILTER(LANG(?countryLabel) = "en") }
+      OPTIONAL { ?person rdfs:label ?personLabel . FILTER(LANG(?personLabel) = "en") }
+    }
+    ORDER BY ?countryLabel DESC(?sitelinks)
+    ```
+
+    This query joins all pairs of citizens of the same country, which are about
+    1.2 trillion pairs. On the same index as above, it fails after about 20
+    seconds because it exceeds a memory limit of 20 GB, and no amount of memory
+    would make it practical. For the top-1 per group, `GROUP BY` with `MAX` is a cheaper
+    alternative, but it requires joining the graph pattern a second time and
+    returns several rows per group in case of ties.
 
 ## Performance
 
@@ -400,8 +470,8 @@ is unique.
 ## Current limitations
 
 1. The row numbers are not restarted for each partition. See the
-   [example](#row_number-per-partition-and-top-k-per-group) above for how to
-   compute row numbers per partition.
+   [example](#row_number-per-partition) above for how to compute row numbers
+   per partition.
 2. `RANK`, `DENSE_RANK`, `NTILE`, and aggregates over window frames (for
    example, running sums with `SUM(...) OVER (... ROWS UNBOUNDED PRECEDING)`)
    are not directly supported. Frames of a fixed size, like a moving average
