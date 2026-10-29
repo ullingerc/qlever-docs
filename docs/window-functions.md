@@ -58,8 +58,10 @@ partition variables.
 
 ??? note "Example for `LAG`"
 
-    The second service numbers the rows from 1, so its row `i` is joined with
-    row `i + 1` of the first service, if both belong to the same entity `?e`.
+    For each value of an entity, the previous (that is, next smaller) value of
+    the same entity. The second service numbers the rows from 1, so its row `i`
+    is joined with row `i + 1` of the first service, if both belong to the same
+    entity `?e`.
 
     ```sparql
     PREFIX rn: <https://qlever.cs.uni-freiburg.de/rowNumber/>
@@ -79,7 +81,8 @@ partition variables.
 
 ??? note "Example for `LEAD`"
 
-    Like `LAG`, but with the offset on the outer service, such that each row is
+    For each value of an entity, the next larger value of the same entity. Like
+    `LAG`, but with the offset on the outer service, such that each row is
     joined with its successor.
 
     ```sparql
@@ -100,8 +103,9 @@ partition variables.
 
 ??? note "Example for `LAST_VALUE` and argmax"
 
-    Remove the rows that have a successor with the same entity, which leaves
-    exactly one row per entity. For the argmin, move the offset into the
+    For each entity, its largest value (together with all other variables of
+    that row). Remove the rows that have a successor with the same entity, which
+    leaves exactly one row per entity. For the argmin, move the offset into the
     `MINUS`.
 
     ```sparql
@@ -122,7 +126,8 @@ partition variables.
 
 ??? note "Example for `FIRST_VALUE`"
 
-    The subquery computes the first row of each entity (like the argmin above),
+    For each value of an entity, the smallest value of the same entity. The
+    subquery computes the first row of each entity (like the argmin above),
     which is then joined with all rows.
 
     ```sparql
@@ -148,9 +153,8 @@ partition variables.
 
 ??? note "Example for top-k per group"
 
-    A row is among the first `k` rows of its entity if the row `k` rows before
-    it belongs to another entity. This query computes the two largest values of
-    each entity.
+    For each entity, its two largest values. A row is among the first `k` rows
+    of its entity if the row `k` rows before it belongs to another entity.
 
     ```sparql
     PREFIX rn: <https://qlever.cs.uni-freiburg.de/rowNumber/>
@@ -170,8 +174,9 @@ partition variables.
 
 ??? note "Example for `ROW_NUMBER` per partition"
 
-    The row number within the partition is the global row number minus the
-    smallest row number of the partition.
+    For each value of an entity, its rank among the values of the same entity
+    (starting at 1). The row number within the partition is the global row
+    number minus the smallest row number of the partition.
 
     ```sparql
     PREFIX rn: <https://qlever.cs.uni-freiburg.de/rowNumber/>
@@ -272,4 +277,6 @@ further variables to the `ORDER BY` for a deterministic result.
    example above for a workaround).
 2. `RANK`, `DENSE_RANK`, `NTILE`, and aggregates over window frames (like
    running sums) are not directly supported.
-3. The `offset` must not be negative.
+3. The `offset` must not be negative. Instead of a negative offset on one
+   service, use the corresponding positive offset on the other service, as in
+   the `LAG` and `LEAD` examples above.
